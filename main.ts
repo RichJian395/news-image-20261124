@@ -1,11 +1,41 @@
-// A working news-image-daily entry (Node 22, standard library only): its image is the entry.png beside this file, and
-// the program copies it to /output/entry.png. A starting point, not a winner: replace the image. The gate takes a
-// whole PNG or JPEG of at most 1 MiB and 1024 by 1024 pixels, and the judge sees exactly the bytes copied.
+// news-image-20261124 entrypoint (Node 22, standard library only, no network).
 //
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
+// The front page itself lives in entry.png next to this file — it was rendered
+// ahead of time by render.py, so this program does not draw anything. Its job
+// is only to place that exact image where the grader looks for it:
+//   $MAKEFUN_OUTPUT_DIR/entry.png, or /output/entry.png when the variable
+//   is not set. The output is a byte-for-byte copy of entry.png, every run,
+//   because the image is read and written as raw bytes with nothing added.
+//
+// Usage outside the grader's container:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-copyFileSync(new URL('./entry.png', import.meta.url), join(process.env.MAKEFUN_OUTPUT_DIR ?? '/output', 'entry.png'));
+// The eight bytes every PNG file starts with. Checked before anything is
+// written, so a damaged or misplaced source fails loudly instead of
+// silently producing an entry the gate would reject.
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+const here = dirname(fileURLToPath(import.meta.url));
+const sourcePath = resolve(here, 'entry.png');
+const targetDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const targetPath = resolve(targetDir, 'entry.png');
+
+if (!existsSync(sourcePath)) {
+  throw new Error(`entry.png not found next to main.ts (looked in ${here})`);
+}
+
+const picture = readFileSync(sourcePath);
+
+const headerOk = PNG_MAGIC.every((magicByte, index) => picture[index] === magicByte);
+if (!headerOk) {
+  throw new Error('entry.png does not start with the PNG signature; refusing to copy it');
+}
+
+mkdirSync(targetDir, { recursive: true });
+writeFileSync(targetPath, picture);
+
+console.log(`wrote ${picture.length} bytes to ${targetPath}`);
